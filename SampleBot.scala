@@ -8,7 +8,9 @@ import scala.util.parsing.json.JSON._
 
 object SampleBot
 {
-  val ENDPOINT_HOST = "www.oorby.com"
+  val GAME_CREATOR_HOST = "www.oorby.com"
+  var CURRENT_ENDPOINT_HOST = "http://" + GAME_CREATOR_HOST
+
   val VERBOSE = false
   
   var ARG_BOT_NAME = ""
@@ -103,14 +105,14 @@ object SampleBot
   }
 
   def endpoint_post(resource: String, parameters: HashMap[String, String]): String = {
-    val url = "http://" + ENDPOINT_HOST + resource + "?devkey=" + ARG_DEV_KEY + "&eventId=" + last_event_id
+    val url = CURRENT_ENDPOINT_HOST + resource + "?devkey=" + ARG_DEV_KEY + "&eventId=" + last_event_id
     val data = parameters.map(kv => URLEncoder.encode(kv._1, enc) + "=" + URLEncoder.encode(kv._2, enc)).mkString("&")
 
     http_post(url, data)
   }
   
   def endpoint_get(resource: String): String = {
-    val url = "http://" + ENDPOINT_HOST + resource + "?devkey=" + ARG_DEV_KEY + "&eventId=" + last_event_id
+    val url = CURRENT_ENDPOINT_HOST + resource + "?devkey=" + ARG_DEV_KEY + "&eventId=" + last_event_id
     
     http_get(url)
   }
@@ -389,7 +391,17 @@ object SampleBot
         get_next_event
       }
 
+
       val eventType = extract(eventMap, "event", "eventType")
+      if (eventType.exists(_.equals("GameComplete"))) {
+        CURRENT_ENDPOINT_HOST = "http://" + GAME_CREATOR_HOST
+      } else {
+        extract(eventMap, "event", "game", "gameManagerHost") match {
+          case Some(host:String) => CURRENT_ENDPOINT_HOST = host
+          case _ => {}
+        }
+      }
+
       if (eventType.exists(_.equals("ActionRequired"))) {
         nextAction = Some(decideNextAction(eventMap))
       } else {
