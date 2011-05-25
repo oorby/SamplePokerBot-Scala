@@ -31,6 +31,7 @@ object SampleBot
     val u = new URL(url);
     val conn = u.openConnection().asInstanceOf[HttpURLConnection];
     conn.setReadTimeout(0) // no timeout
+    conn.setInstanceFollowRedirects(true)
     
     println(conn.getResponseCode() + " " + conn.getResponseMessage())
     val istr = if (conn.getResponseCode() == 200) { conn.getInputStream() } else { conn.getErrorStream() }
@@ -66,6 +67,8 @@ object SampleBot
     val conn = u.openConnection().asInstanceOf[HttpURLConnection];
     conn.setDoOutput(true)
     conn.setReadTimeout(0) // no timeout
+    conn.setInstanceFollowRedirects(true)
+
     val wr = new OutputStreamWriter(conn.getOutputStream())
     wr.write(data)
     wr.flush
