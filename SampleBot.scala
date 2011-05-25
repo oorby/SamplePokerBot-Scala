@@ -8,7 +8,7 @@ import scala.util.parsing.json.JSON._
 
 object SampleBot
 {
-  val GAME_CREATOR_HOST = "www.oorby.com"
+  val GAME_CREATOR_HOST = "mcp.oorby.com"
   var CURRENT_ENDPOINT_HOST = "http://" + GAME_CREATOR_HOST
 
   val VERBOSE = false
