@@ -1,0 +1,10 @@
+This is a sample, written in scala with no other lib dependencies, for playing poker against the oorby.com API.
+
+To use it, compile it with:
+scalac SampleBot.scala
+
+and run it:
+scala SampleBot botname devkey
+
+This bot just plays randomly. To add in your own poker logic, update decideNextAction().
+
