@@ -8,15 +8,15 @@ import scala.util.parsing.json.JSON._
 
 object SampleBot
 {
-  val ENDPOINT_HOST = "localhost:8080";
+  val ENDPOINT_HOST = "www.oorby.com"
   val VERBOSE = false
   
-  var ARG_BOT_NAME = "";
-  var ARG_DEV_KEY = "";
+  var ARG_BOT_NAME = ""
+  var ARG_DEV_KEY = ""
   
-  var last_results = "";
-  var last_event_id = "NONE";
-  val enc = "UTF-8";
+  var last_results = ""
+  var last_event_id = "NONE"
+  val enc = "UTF-8"
   
   def yap(msg: String): Unit = {
     if (VERBOSE)
@@ -28,34 +28,12 @@ object SampleBot
     yap("GET('" + url + "')")
     yap("---")
     
-    val u = new URL(url);
-    val conn = u.openConnection().asInstanceOf[HttpURLConnection];
+    val u = new URL(url)
+    val conn = u.openConnection().asInstanceOf[HttpURLConnection]
     conn.setReadTimeout(0) // no timeout
     conn.setInstanceFollowRedirects(true)
     
-    println(conn.getResponseCode() + " " + conn.getResponseMessage())
-    val istr = if (conn.getResponseCode() == 200) { conn.getInputStream() } else { conn.getErrorStream() }
-    val in = new BufferedReader(new InputStreamReader(istr))
-    var line = new String
-    var stop = false
-    
-    var response = ""
-    
-    while (!stop) {
-      val line = in.readLine()
-      if (line == null)
-        stop = true
-      else {
-        yap(line)
-        response += line + "\n"
-      }
-    }
-    
-    in.close()
-    yap("---")
-    yap("")
-    
-    response
+    readResponse(conn)
   }
   
   def http_post(url: String, data: String): String = {
@@ -63,8 +41,8 @@ object SampleBot
     yap("POST('" + url + "', '" + data + "')")
     yap("---")
     
-    val u = new URL(url);
-    val conn = u.openConnection().asInstanceOf[HttpURLConnection];
+    val u = new URL(url)
+    val conn = u.openConnection().asInstanceOf[HttpURLConnection]
     conn.setDoOutput(true)
     conn.setReadTimeout(0) // no timeout
     conn.setInstanceFollowRedirects(true)
@@ -72,7 +50,12 @@ object SampleBot
     val wr = new OutputStreamWriter(conn.getOutputStream())
     wr.write(data)
     wr.flush
-    
+    wr.close()
+
+    readResponse(conn)
+  }
+
+  def readResponse(conn:HttpURLConnection):String = {
     println(conn.getResponseCode() + " " + conn.getResponseMessage())
     val istr = if (conn.getResponseCode() == 200) { conn.getInputStream() } else { conn.getErrorStream() }
     val in = new BufferedReader(new InputStreamReader(istr))
@@ -92,27 +75,17 @@ object SampleBot
     }
     
     in.close()
-    wr.close()
     
-    yap("---");
-    yap("");
+    yap("---")
+    yap("")
     
     response
   }
-  
+
   def endpoint_post(resource: String, parameters: HashMap[String, String]): String = {
     val url = "http://" + ENDPOINT_HOST + resource + "?devkey=" + ARG_DEV_KEY + "&eventId=" + last_event_id
-    
-    var data = ""
-    
-    var first = true
-    for ((k, v) <- parameters) {
-      if (!first)
-        data += "&"
-      data += URLEncoder.encode(k, enc) + "=" + URLEncoder.encode(v, enc)
-      first = false
-    }
-    
+    val data = parameters.map(kv => URLEncoder.encode(kv._1, enc) + "=" + URLEncoder.encode(kv._2, enc)).mkString("&")
+
     http_post(url, data)
   }
   
@@ -129,7 +102,7 @@ object SampleBot
   }
   
   def get_next_event:Map[String, Any] = {
-    val results = endpoint_get("/v1/poker/bots/" + ARG_BOT_NAME + "/next_event");
+    val results = endpoint_get("/v1/poker/bots/" + ARG_BOT_NAME + "/next_event")
 
     print_results(results)
   }
@@ -137,7 +110,7 @@ object SampleBot
   def print_hand(cards: List[String]) = {
     for (row <- 0 to 5) {
       for (card <- cards)
-        print(card_line(card, row) + " ");
+        print(card_line(card, row) + " ")
       
       println
     }
@@ -150,8 +123,8 @@ object SampleBot
     
     // Should probably validate that rank is 2-9TJQKA and suit is hcsd
     
-    var rank_left = "";
-    var rank_right = "";
+    var rank_left = ""
+    var rank_right = ""
     
     if (rank == 'T') {
       rank_left = "10"
@@ -170,18 +143,18 @@ object SampleBot
       'd' -> List(".------.", "|" + rank_left + "/\\  |", "| /  \\ |", "| \\  / |", "|  \\/" + rank_right + "|", "`------'"),
       'c' -> List(".------.", "|" + rank_left + "_   |", "| ( )  |", "|(_x_) |", "|  Y " + rank_right + "|", "`------'"),
       's' -> List(".------.", "|" + rank_left + ".   |", "| / \\  |", "|(_,_) |", "|  I " + rank_right + "|", "`------'")
-    );
+    )
     
-    return art(suit)(line);
+    return art(suit)(line)
   }
   
   def print_help {
-    println("c - call");
-    println("r - raise");
-    println("f - fold");
-    println("n - next event");
-    println("j - dump JSON from last query");
-    println("q - leave the program");
+    println("c - call")
+    println("r - raise")
+    println("f - fold")
+    println("n - next event")
+    println("j - dump JSON from last query")
+    println("q - leave the program")
     println
   }
   
@@ -365,15 +338,8 @@ object SampleBot
           "bot " + resultBotName
         }
         
-        val bothole = asMap(holeMap.get("hole"))
-        if (bothole.isDefined) {
-          printCards("  " + botName + " hole:", bothole.get.get("cards"))
-        }
-        
-        val besthand = asMap(holeMap.get("bestHand"))
-        if (besthand.isDefined) {
-          printCards("  " + botName + " best hand:", besthand.get.get("cards"))
-        }
+        asMap(holeMap.get("hole")).map(cards => printCards("  " + botName + " hole:", cards.get("cards")))
+        asMap(holeMap.get("bestHand")).map(cards => printCards("  " + botName + " best hand:", cards.get("cards")))
       }
     }
   }
