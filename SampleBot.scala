@@ -27,13 +27,14 @@ object SampleBot
     yap("")
     yap("GET('" + url + "')")
     yap("---")
-    
-    val u = new URL(url)
-    val conn = u.openConnection().asInstanceOf[HttpURLConnection]
-    conn.setReadTimeout(0) // no timeout
-    conn.setInstanceFollowRedirects(true)
-    
-    readResponse(conn)
+
+    makeReq(() => {
+      val u = new URL(url)
+      val conn = u.openConnection().asInstanceOf[HttpURLConnection]
+      conn.setReadTimeout(0) // no timeout
+      conn.setInstanceFollowRedirects(true)
+      readResponse(conn)
+    })
   }
   
   def http_post(url: String, data: String): String = {
@@ -41,23 +42,42 @@ object SampleBot
     yap("POST('" + url + "', '" + data + "')")
     yap("---")
     
-    val u = new URL(url)
-    val conn = u.openConnection().asInstanceOf[HttpURLConnection]
-    conn.setDoOutput(true)
-    conn.setReadTimeout(0) // no timeout
-    conn.setInstanceFollowRedirects(true)
+    makeReq(() => {
+      val u = new URL(url)
+      val conn = u.openConnection().asInstanceOf[HttpURLConnection]
+      conn.setDoOutput(true)
+      conn.setReadTimeout(0) // no timeout
+      conn.setInstanceFollowRedirects(true)
 
-    val wr = new OutputStreamWriter(conn.getOutputStream())
-    wr.write(data)
-    wr.flush
-    wr.close()
+      val wr = new OutputStreamWriter(conn.getOutputStream())
+      wr.write(data)
+      wr.flush
+      wr.close()
 
-    readResponse(conn)
+      readResponse(conn)
+    })
   }
 
-  def readResponse(conn:HttpURLConnection):String = {
-    println(conn.getResponseCode() + " " + conn.getResponseMessage())
-    val istr = if (conn.getResponseCode() == 200) { conn.getInputStream() } else { conn.getErrorStream() }
+  private def makeReq(requestGen:() => (Int, String)):String = {
+    while (true) {
+      val (code, data) = requestGen()
+      if (code == 200) {
+        return data
+      } else if (code >= 500) {
+        yap("got error from server, waiting 10 seconds before retrying " + code)
+        Thread.sleep(10)
+      } else {
+        yap("got empty response from server " + code)
+      }
+    }
+
+    return ""
+  }
+
+  def readResponse(conn:HttpURLConnection):(Int, String) = {
+    yap(conn.getResponseCode() + " " + conn.getResponseMessage())
+    val respCode = conn.getResponseCode()
+    val istr = if (conn.getResponseCode() == respCode) { conn.getInputStream() } else { conn.getErrorStream() }
     val in = new BufferedReader(new InputStreamReader(istr))
     var line = new String
     var stop = false
@@ -79,7 +99,7 @@ object SampleBot
     yap("---")
     yap("")
     
-    response
+    (respCode, response)
   }
 
   def endpoint_post(resource: String, parameters: HashMap[String, String]): String = {
