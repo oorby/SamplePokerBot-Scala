@@ -11,11 +11,13 @@ object SampleBot
   val GAME_CREATOR_HOST = "mcp.oorby.com"
   var CURRENT_ENDPOINT_HOST = "http://" + GAME_CREATOR_HOST
 
+  val PLAY_ONE_GAME = true
   val VERBOSE = false
   
   var ARG_BOT_NAME = ""
   var ARG_DEV_KEY = ""
   
+
   var last_results = ""
   var last_event_id = "NONE"
   val enc = "UTF-8"
@@ -394,6 +396,9 @@ object SampleBot
 
       val eventType = extract(eventMap, "event", "eventType")
       if (eventType.exists(_.equals("GameComplete"))) {
+        if (PLAY_ONE_GAME) {
+          return;
+        }
         CURRENT_ENDPOINT_HOST = "http://" + GAME_CREATOR_HOST
       } else {
         extract(eventMap, "event", "game", "gameManagerHost") match {
