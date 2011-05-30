@@ -7,14 +7,18 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.parsing.json.JSON
 import scala.util.parsing.json.JSON._
 
+trait Logger {
+  val VERBOSE = false
 
-object SampleBot
+  def yap(msg: => String) = if (VERBOSE) println(msg)
+}
+
+object SampleBot extends Logger
 {
   val GAME_CREATOR_HOST = "mcp.oorby.com"
   var CURRENT_ENDPOINT_HOST = "http://" + GAME_CREATOR_HOST
 
   val PLAY_ONE_GAME = true
-  val VERBOSE = false
   
   var ARG_BOT_NAME = ""
   var ARG_DEV_KEY = ""
@@ -23,11 +27,6 @@ object SampleBot
   var last_results = ""
   var last_event_id = "NONE"
   val enc = "UTF-8"
-  
-  def yap(msg: String): Unit = {
-    if (VERBOSE)
-      println(msg)
-  }
   
   def http_get(url: String): String = {
     yap("")
