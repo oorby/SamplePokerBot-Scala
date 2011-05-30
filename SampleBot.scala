@@ -1,10 +1,12 @@
 import java.io._
 import java.net._
+import javax.xml.ws.http.HTTPException
 
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.ArrayBuffer
 import scala.util.parsing.json.JSON
 import scala.util.parsing.json.JSON._
+
 
 object SampleBot
 {
@@ -45,7 +47,7 @@ object SampleBot
     yap("")
     yap("POST('" + url + "', '" + data + "')")
     yap("---")
-    
+
     makeReq(() => {
       val u = new URL(url)
       val conn = u.openConnection().asInstanceOf[HttpURLConnection]
@@ -70,6 +72,8 @@ object SampleBot
       } else if (code >= 500) {
         yap("got error from server, waiting 10 seconds before retrying " + code)
         Thread.sleep(10)
+      } else if (code >= 400) {
+        throw new HTTPException(code)
       } else {
         yap("got empty response from server " + code)
       }
@@ -81,7 +85,7 @@ object SampleBot
   def readResponse(conn:HttpURLConnection):(Int, String) = {
     yap(conn.getResponseCode() + " " + conn.getResponseMessage())
     val respCode = conn.getResponseCode()
-    val istr = if (conn.getResponseCode() == respCode) { conn.getInputStream() } else { conn.getErrorStream() }
+    val istr = if (conn.getResponseCode() < 300) { conn.getInputStream() } else { conn.getErrorStream() }
     val in = new BufferedReader(new InputStreamReader(istr))
     var line = new String
     var stop = false
@@ -120,9 +124,17 @@ object SampleBot
   }
   
   def take_action(action: String):Map[String, Any] = {
-    val results = endpoint_post("/v1/poker/bots/" + ARG_BOT_NAME + "/next_event", HashMap(Pair("action", action)))
+    try {
+      val results = endpoint_post("/v1/poker/bots/" + ARG_BOT_NAME + "/next_event", HashMap(Pair("action", action)))
     
-    print_results(results)
+      print_results(results)
+    } catch {
+      case ex:HTTPException => if (ex.getStatusCode >= 400 && ex.getStatusCode < 500) {
+        return get_next_event
+      } else {
+        throw ex
+      }
+    }
   }
   
   def get_next_event:Map[String, Any] = {
