@@ -4,7 +4,7 @@ To use it, compile it with:
 scalac SampleBot.scala
 
 and run it:
-scala SampleBot botname devkey
+scala BotRunner botname devkey
 
-This bot just plays randomly. To add in your own poker logic, update decideNextAction().
+This bot just plays randomly. To add in your own poker logic, create your own bot class and implement decideNextAction() (see CallBot and RandomBot for examples). Then, update BotRunner to use your bot instead of RandomBot.
 
