@@ -67,16 +67,16 @@ trait JsonHelpers {
 trait OorbyPokerClient {
   val pokerClient:OorbyPoker
 
+  val botName:String
+  val devKey:String
+
   trait OorbyPoker {
     def take_action(action: String):Map[String, Any]
     def get_next_event:Map[String, Any]
   }
 }
 
-trait RemotePokerClient extends OorbyPokerClient {
-  val botName:String
-  val devKey:String
-
+trait RemotePokerClient extends OorbyPokerClient with Logger {
   val GAME_CREATOR_HOST = "mcp.oorby.com"
   var CURRENT_ENDPOINT_HOST = "http://" + GAME_CREATOR_HOST
 
@@ -107,9 +107,9 @@ trait RemotePokerClient extends OorbyPokerClient {
 
 
     def http_get(url: String): String = {
-      // yap("")
-      // yap("GET('" + url + "')")
-      // yap("---")
+      yap("")
+      yap("GET('" + url + "')")
+      yap("---")
 
       makeReq(() => {
         val u = new URL(url)
@@ -121,9 +121,9 @@ trait RemotePokerClient extends OorbyPokerClient {
     }
   
     def http_post(url: String, data: String): String = {
-      // yap("")
-      // yap("POST('" + url + "', '" + data + "')")
-      // yap("---")
+      yap("")
+      yap("POST('" + url + "', '" + data + "')")
+      yap("---")
 
       makeReq(() => {
         val u = new URL(url)
@@ -147,12 +147,12 @@ trait RemotePokerClient extends OorbyPokerClient {
         if (code == 200) {
           return data
         } else if (code >= 500) {
-          // yap("got error from server, waiting 10 seconds before retrying " + code)
+          yap("got error from server, waiting 10 seconds before retrying " + code)
           Thread.sleep(10)
         } else if (code >= 400) {
           throw new HTTPException(code)
         } else {
-          // yap("got empty response from server " + code)
+          yap("got empty response from server " + code)
         }
       }
 
@@ -160,7 +160,7 @@ trait RemotePokerClient extends OorbyPokerClient {
     }
 
     def readResponse(conn:HttpURLConnection):(Int, String) = {
-      // yap(conn.getResponseCode() + " " + conn.getResponseMessage())
+      yap(conn.getResponseCode() + " " + conn.getResponseMessage())
       val respCode = conn.getResponseCode()
       val istr = if (conn.getResponseCode() < 300) { conn.getInputStream() } else { conn.getErrorStream() }
       val in = new BufferedReader(new InputStreamReader(istr))
@@ -175,14 +175,14 @@ trait RemotePokerClient extends OorbyPokerClient {
           stop = true
         else {
           response += line + "\n"
-          // yap(line)
+          yap(line)
         }
       }
     
       in.close()
     
-      // yap("---")
-      // yap("")
+      yap("---")
+      yap("")
     
       (respCode, response)
     }
@@ -219,8 +219,14 @@ trait RemotePokerClient extends OorbyPokerClient {
 }
 
 
+trait PokerEventListener {
+  def eventReceived(eventMap:Map[String, Any])
+}
+
 trait Bot extends Logger with JsonHelpers {
   self: OorbyPokerClient =>
+
+  val eventListeners:List[PokerEventListener]
 
   def play = {
     yap("Joining game, may take up to 30 seconds")
@@ -230,28 +236,217 @@ trait Bot extends Logger with JsonHelpers {
     while (continue) {
       val event = if (nextAction.isDefined) pokerClient.take_action(nextAction.get) else pokerClient.get_next_event
 
-      eventReceived(event)
+      eventListeners.map(_.eventReceived(event))
 
       val eventType = extract(event, "event", "eventType")
       if (eventType.exists(_ == "ActionRequired")) {
         nextAction = Some(decideNextAction(event))
+      } else {
+        nextAction = None
       }
     }
   }
 
-  def eventReceived(eventMap:Map[String, Any]) = {
-    println(eventMap)
-  }
   def decideNextAction(eventMap:Map[String, Any]):String
+
+}
+
+class EventPrinter(val botName:String) extends PokerEventListener with JsonHelpers {
+
+  def eventReceived(resultsMap:Map[String, Any]) = {
+    for {
+      event <- asMap(resultsMap.get("event"))
+      game <- asMap(event.get("game"))
+    } {
+      event.get("eventType") match {
+        case Some("HandComplete") => {
+          for (hand <- asMap(event.get("hand"))) {
+            val gameId = game.get("gameId").getOrElse("?")
+            printCompletedHand(gameId.toString, hand)
+          }
+        }
+        
+        case Some("GameComplete") => {
+          println("(This game is now complete.)\n")
+          for (hand <- asMap(event.get("lastHand"))) {
+            val gameId = game.get("gameId").getOrElse("?")
+            printCompletedHand(gameId.toString, hand)
+          }
+        }
+        
+        case Some("ActionRequired") => {
+          for {
+            stakes <- game.get("playerStakes")
+            stakesArray <- asList(stakes)
+            hand <- asMap(event.get("hand"))
+          } {
+            println("Current stakes:")
+            
+            for {
+              stake <- stakesArray
+              stakeMap <- asMap(stake)
+              botName <- stakeMap.get("botName")
+              currentStake <- stakeMap.get("currentStake")
+            } {
+              val me = if (botName == botName) " (me)" else ""
+              println("  " + botName + " -> " + currentStake + me)
+            }
+            println
+            
+            asMap(hand.get("communityCards")).map(c => printCards("Cards on the table:", c.get("cards")))
+            asMap(hand.get("hole")).map(c => printCards("Your cards:", c.get("cards")))
+            
+            printAvailableActions(hand)
+          }
+        }
+        
+        case _ => {} // event type we don't care about
+      }
+    }
+  }
+  
+  private def printCards(msg:String, cardsOpt:Option[Any]) = {
+    for {
+      cards <- asList(cardsOpt)
+      if (cards.length > 0)
+    } {
+      println(msg)
+      print_hand(cards.map(_.toString))
+      println()
+    }
+  }
+  
+  val actionLabels = Map("f" -> "fold", "r" -> "raise", "c" -> "call")
+  private def printAvailableActions(hand:Map[String, Any]) = {
+    for {
+      availableActions <- asList(hand.get("availableActions"))
+      availableAction <- availableActions
+      actionMap <- asMap(availableAction)
+      actionKey <- actionMap.get("action")
+      actionCost <- asDouble(actionMap.get("costOfAction"))
+    } {
+      val costString = if (actionCost > 0) " for " + actionCost else ""
+      println("Press " + actionKey + " to " + actionLabels(actionKey.toString) + costString)
+    }
+  }
+  
+  private def printCompletedHand(gameId:String, hand:Map[String, Any]) = {
+    val handNumber = hand.get("handNumber").getOrElse("?")
+    println("\n\n\n\n\n*** Game " + gameId + ", hand " + handNumber + "\n")
+    
+    println("(This hand is now complete.)\n")
+    val showdownHoles = asList(hand.get("showdownPlayerHoles"))
+    if (showdownHoles.isDefined) {
+      printShowdown(showdownHoles.get)
+    }
+    
+    println("Results:")
+    var myChipChange = 0.0
+    for {
+      results <- asList(hand.get("results"))
+      result <- results
+      resultsMap <- asMap(result)
+      botName <- resultsMap.get("botName")
+      netChipChange <- resultsMap.get("netStackChange")
+    } {
+      if (botName.equals(botName)) {
+        myChipChange = netChipChange.toString.toDouble
+      } else {
+        println("\tbot " + botName + " -> " + netChipChange)
+      }
+    }    
+    println("\tMe -> " + myChipChange + "\n")
+  }
+  
+  private def printShowdown(showdown:List[Any]) = {
+    if (showdown.nonEmpty) {
+      println("Showdown:")
+      
+      for {
+        hole <- showdown
+        holeMap <- asMap(hole)
+      } {
+        val resultBotName = holeMap("botName")
+        val bot = if (resultBotName.equals(botName)) {
+          "Your"
+        } else {
+          "bot " + resultBotName
+        }
+        
+        asMap(holeMap.get("hole")).map(cards => printCards("  " + bot + " hole:", cards.get("cards")))
+        asMap(holeMap.get("bestHand")).map(cards => printCards("  " + bot + " best hand:", cards.get("cards")))
+      }
+    }
+  }
+
+  def print_hand(cards: List[String]) = {
+    for (row <- 0 to 5) {
+      for (card <- cards)
+        print(card_line(card, row) + " ")
+      
+      println
+    }
+  }
+  
+  // return a single line of a card rendering
+  def card_line(card: String, line: Int): String = {
+    val rank = card.charAt(0)
+    val suit = card.charAt(1)
+    
+    // Should probably validate that rank is 2-9TJQKA and suit is hcsd
+    
+    var rank_left = ""
+    var rank_right = ""
+    
+    if (rank == 'T') {
+      rank_left = "10"
+      rank_right = "10"
+    } else {
+      if (suit == 'h') {
+        rank_left = rank + "_"
+      } else {
+        rank_left = rank + " "
+      }
+      rank_right = " " + rank
+    }
+    
+    val art = Map(
+      'h' -> List(".------.", "|" + rank_left + "  _ |", "|( \\/ )|", "| \\  / |", "|  \\/" + rank_right + "|", "`------'"),
+      'd' -> List(".------.", "|" + rank_left + "/\\  |", "| /  \\ |", "| \\  / |", "|  \\/" + rank_right + "|", "`------'"),
+      'c' -> List(".------.", "|" + rank_left + "_   |", "| ( )  |", "|(_x_) |", "|  Y " + rank_right + "|", "`------'"),
+      's' -> List(".------.", "|" + rank_left + ".   |", "| / \\  |", "|(_,_) |", "|  I " + rank_right + "|", "`------'")
+    )
+    
+    return art(suit)(line)
+  }
 }
 
 
 class CallBot(val botName:String, val devKey:String) extends Bot
                    with RemotePokerClient {
+  val eventListeners = List(new EventPrinter(botName))
   def decideNextAction(eventMap:Map[String, Any]):String = {
     "c"
   }
 }
+
+class RandomBot(val botName:String, val devKey:String) extends Bot
+                   with RemotePokerClient {
+  val eventListeners = List(new EventPrinter(botName))
+  def decideNextAction(eventMap:Map[String, Any]):String = {
+    import scala.util.Random._
+    val availableActions = extract(eventMap, "event", "hand", "availableActions")
+
+    for {
+      availableActions <- asList(extract(eventMap, "event", "hand", "availableActions"))
+      randomAction <- asMap(availableActions(nextInt(availableActions.length)))
+    } {
+      return randomAction.get("action").get.toString
+    }
+    "c"
+  }
+}
+
 
 object BotRunner {
   def main(args: Array[String]) {
@@ -260,7 +455,7 @@ object BotRunner {
       return
     }
 
-    val bot = new CallBot(args(0), args(1))
+    val bot = new RandomBot(args(0), args(1))
     bot.play
   }
 }
