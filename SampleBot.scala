@@ -228,12 +228,14 @@ trait Bot extends Logger with JsonHelpers {
 
   val eventListeners:List[PokerEventListener]
 
-  def play = {
+  def play:Unit = play(-1)
+
+  def play(numGames:Int):Unit = {
     yap("Joining game, may take up to 30 seconds")
 
-    var continue = true
+    var numGamesPlayed = 0
     var nextAction:Option[String] = None
-    while (continue) {
+    while (numGames == -1 || numGames > numGamesPlayed) {
       val event = if (nextAction.isDefined) pokerClient.take_action(nextAction.get) else pokerClient.get_next_event
 
       eventListeners.map(_.eventReceived(event))
@@ -243,6 +245,10 @@ trait Bot extends Logger with JsonHelpers {
         nextAction = Some(decideNextAction(event))
       } else {
         nextAction = None
+      }
+
+      if (eventType.exists(_ == "GameComplete")) {
+        numGamesPlayed += 1
       }
     }
   }
@@ -456,7 +462,7 @@ object BotRunner {
     }
 
     val bot = new RandomBot(args(0), args(1))
-    bot.play
+    bot.play(1)
   }
 }
 
