@@ -291,11 +291,11 @@ class EventPrinter(val botName:String) extends PokerEventListener with JsonHelpe
             for {
               stake <- stakesArray
               stakeMap <- asMap(stake)
-              botName <- stakeMap.get("botName")
+              stakeBotName <- stakeMap.get("botName")
               currentStake <- stakeMap.get("currentStake")
             } {
-              val me = if (botName == botName) " (me)" else ""
-              println("  " + botName + " -> " + currentStake + me)
+              val me = if (botName == stakeBotName) " (me)" else ""
+              println("  " + stakeBotName + " -> " + currentStake + me)
             }
             println
             
