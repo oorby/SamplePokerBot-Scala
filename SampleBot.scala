@@ -457,7 +457,7 @@ class RandomBot(val botName:String, val devKey:String) extends Bot
 object BotRunner {
   def main(args: Array[String]) {
     if (args.size != 2) {
-      println("usage: scala BotRunner botName guid")
+      println("usage: scala BotRunner botName devKey")
       return
     }
 
